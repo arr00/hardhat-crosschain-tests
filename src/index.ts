@@ -1,49 +1,107 @@
-import { extendConfig, extendEnvironment } from "hardhat/config";
-import { lazyObject } from "hardhat/plugins";
-import { HardhatConfig, HardhatUserConfig } from "hardhat/types";
-import path from "path";
+import fs from "fs";
+import globby from "globby";
+import { TASK_TEST_GET_TEST_FILES } from "hardhat/builtin-tasks/task-names";
+import { task } from "hardhat/config";
+import { resolve } from "path";
 
-import { ExampleHardhatRuntimeEnvironmentField } from "./ExampleHardhatRuntimeEnvironmentField";
-// This import is needed to let the TypeScript compiler know that it should include your type
-// extensions in your npm package's types file.
-import "./type-extensions";
+task(TASK_TEST_GET_TEST_FILES).setAction(async (_, { config }, runSuper) => {
+  console.log("Getting test files");
 
-extendConfig(
-  (config: HardhatConfig, userConfig: Readonly<HardhatUserConfig>) => {
-    // We apply our default config here. Any other kind of config resolution
-    // or normalization should be placed here.
-    //
-    // `config` is the resolved config, which will be used during runtime and
-    // you should modify.
-    // `userConfig` is the config as provided by the user. You should not modify
-    // it.
-    //
-    // If you extended the `HardhatConfig` type, you need to make sure that
-    // executing this function ensures that the `config` object is in a valid
-    // state for its type, including its extensions. For example, you may
-    // need to apply a default value, like in this example.
-    const userPath = userConfig.paths?.newPath;
+  fs.rmSync("cache/test", { recursive: true, force: true });
 
-    let newPath: string;
-    if (userPath === undefined) {
-      newPath = path.join(config.paths.root, "newPath");
-    } else {
-      if (path.isAbsolute(userPath)) {
-        newPath = userPath;
+  const insertCodeBlock = (networkRpc: string, chainId: number) => {
+    return `
+    await hre.network.provider.request({method: "hardhat_reset", params: [{forking: {jsonRpcUrl: \"${networkRpc}\"},chainId: ${chainId}}]}); 
+    `;
+  };
+
+  let testFiles = [];
+  let networksString = "";
+
+  for (const network of Object.keys(networks)) {
+    const networkTests = await globby([`test/**-${network}*`], {
+      caseSensitiveMatch: false,
+    });
+    networksString += `${network},`;
+
+    for (const networkTest of networkTests) {
+      const blockToAdd = insertCodeBlock(
+        networks[network].networkRpc + process.env.INFURA_KEY,
+        networks[network].chainId
+      );
+      let testText = fs.readFileSync(networkTest, "utf8");
+
+      // First check if there is a before block
+      const beforeBlockIndex = testText.indexOf("before(");
+
+      if (beforeBlockIndex > -1) {
+        // Exists, insert into the block
+        const blockStartIndex = testText.indexOf("{", beforeBlockIndex);
+        testText =
+          testText.slice(0, blockStartIndex + 1) +
+          blockToAdd +
+          testText.slice(blockStartIndex + 1);
       } else {
-        // We resolve relative paths starting from the project's root.
-        // Please keep this convention to avoid confusion.
-        newPath = path.normalize(path.join(config.paths.root, userPath));
+        // Need to create a new before block
+        const describeBlockIndex = testText.indexOf("describe(");
+        if (describeBlockIndex > -1) {
+          const blockStartIndex = testText.indexOf("{", describeBlockIndex);
+          const beforeBlock =
+            "\nbefore(async function () {" + blockToAdd + "});";
+          testText =
+            testText.slice(0, blockStartIndex + 1) +
+            beforeBlock +
+            testText.slice(blockStartIndex + 1);
+        }
       }
+
+      fs.mkdirSync("cache/test", { recursive: true });
+      fs.writeFileSync("cache/" + networkTest, testText);
+      testFiles.push(resolve("cache/" + networkTest));
     }
-
-    config.paths.newPath = newPath;
   }
-);
 
-extendEnvironment((hre) => {
-  // We add a field to the Hardhat Runtime Environment here.
-  // We use lazyObject to avoid initializing things until they are actually
-  // needed.
-  hre.example = lazyObject(() => new ExampleHardhatRuntimeEnvironmentField());
+  testFiles = testFiles.concat(
+    await globby(["**", `!**-{${networksString.slice(0, -1)}}*`], {
+      cwd: "test",
+      caseSensitiveMatch: false,
+      absolute: true,
+    })
+  );
+
+  return testFiles;
 });
+
+const networks: {
+  [network: string]: { chainId: number; networkRpc: string };
+} = {
+  mainnet: { chainId: 1, networkRpc: "https://rinkeby.infura.io/v3/" },
+  ropsten: { chainId: 3, networkRpc: "https://ropsten.infura.io/v3/" },
+  rinkeby: { chainId: 4, networkRpc: "https://rinkeby.infura.io/v3/" },
+  kovan: { chainId: 42, networkRpc: "https://kovan.infura.io/v3/" },
+  goerli: { chainId: 5, networkRpc: "https://goerli.infura.io/v3/" },
+  polygon: {
+    chainId: 137,
+    networkRpc: "https://polygon-mainnet.infura.io/v3/",
+  },
+  mumbai: {
+    chainId: 80001,
+    networkRpc: "https://polygon-mumbai.infura.io/v3/",
+  },
+  optimism: {
+    chainId: 10,
+    networkRpc: "https://optimism-mainnet.infura.io/v3/",
+  },
+  optimisticGoerli: {
+    chainId: 420,
+    networkRpc: "https://optimism-goerli.infura.io/v3/",
+  },
+  arbitrum: {
+    chainId: 42161,
+    networkRpc: "https://arbitrum-mainnet.infura.io/v3/",
+  },
+  arbitrumGoerli: {
+    chainId: 421613,
+    networkRpc: "https://arbitrum-goerli.infura.io/v3/",
+  },
+};

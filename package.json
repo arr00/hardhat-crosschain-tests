@@ -1,29 +1,18 @@
 {
-  "name": "hardhat-ts-plugin-boilerplate",
+  "name": "hardhat-crosschain-tests",
   "version": "0.0.1",
-  "description": "Hardhat TypeScript plugin boilerplate",
-  "repository": "github:nomiclabs/hardhat-ts-plugin-boilerplate",
-  "author": "Nomic Labs LLC",
   "license": "MIT",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
-  "keywords": [
-    "ethereum",
-    "smart-contracts",
-    "hardhat",
-    "hardhat-plugin"
-  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "lint:fix": "prettier --write 'src/**/*.{js,ts}' 'test/**/*.{js,ts}' && tslint --fix --config tslint.json --project tsconfig.json",
+    "lint:fix": "prettier --write 'src/**/*.{js,ts}' && tslint --fix --config tslint.json --project tsconfig.json",
     "lint": "tslint --config tslint.json --project tsconfig.json",
     "test": "mocha --exit --recursive 'test/**/*.test.ts'",
     "build": "tsc",
-    "watch": "tsc -w",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "yarn build"
   },
   "files": [
-    "dist/src/",
-    "src/",
+    "dist/",
     "LICENSE",
     "README.md"
   ],
@@ -31,7 +20,7 @@
     "@types/chai": "^4.1.7",
     "@types/fs-extra": "^5.0.4",
     "@types/mocha": "^5.2.6",
-    "@types/node": "^8.10.38",
+    "@types/node": "^18.0",
     "chai": "^4.2.0",
     "hardhat": "^2.0.0",
     "mocha": "^7.1.2",
@@ -44,5 +33,8 @@
   },
   "peerDependencies": {
     "hardhat": "^2.0.0"
+  },
+  "dependencies": {
+    "globby": "^11.0.4"
   }
 }
