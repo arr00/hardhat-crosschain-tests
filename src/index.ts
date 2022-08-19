@@ -1,26 +1,36 @@
 import fs from "fs";
 import globby from "globby";
-import { TASK_TEST_GET_TEST_FILES } from "hardhat/builtin-tasks/task-names";
+import { TASK_TEST_GET_TEST_FILES, TASK_TEST } from "hardhat/builtin-tasks/task-names";
 import { task } from "hardhat/config";
 import { resolve } from "path";
 
+task(TASK_TEST).setAction(async (_, { config }, runSuper) => {
+  const res = await runSuper();
+
+  const toDelete = await globby(".**", {cwd: "test", absolute: true});
+  for(const file of toDelete) {
+    fs.unlinkSync(file);
+  }
+
+  return res;
+});
+
 task(TASK_TEST_GET_TEST_FILES).setAction(async (_, { config }, runSuper) => {
-  console.log("Getting test files");
-
-  fs.rmSync("cache/test", { recursive: true, force: true });
-
   const insertCodeBlock = (networkRpc: string, chainId: number) => {
     return `
     await hre.network.provider.request({method: "hardhat_reset", params: [{forking: {jsonRpcUrl: \"${networkRpc}\"},chainId: ${chainId}}]}); 
     `;
   };
 
+  const hreCodeBlock = "const hre = require(\"hardhat\");\n";
+
   let testFiles = [];
   let networksString = "";
 
   for (const network of Object.keys(networks)) {
-    const networkTests = await globby([`test/**-${network}*`], {
+    const networkTests = await globby([`**-${network}*`], {
       caseSensitiveMatch: false,
+      cwd: "test"
     });
     networksString += `${network},`;
 
@@ -29,7 +39,12 @@ task(TASK_TEST_GET_TEST_FILES).setAction(async (_, { config }, runSuper) => {
         networks[network].networkRpc + process.env.INFURA_KEY,
         networks[network].chainId
       );
-      let testText = fs.readFileSync(networkTest, "utf8");
+      let testText = fs.readFileSync("test/" + networkTest, "utf8");
+
+      if(testText.indexOf("hre") === -1) {
+        // Need to import hre
+        testText = hreCodeBlock + testText;
+      }
 
       // First check if there is a before block
       const beforeBlockIndex = testText.indexOf("before(");
@@ -55,9 +70,8 @@ task(TASK_TEST_GET_TEST_FILES).setAction(async (_, { config }, runSuper) => {
         }
       }
 
-      fs.mkdirSync("cache/test", { recursive: true });
-      fs.writeFileSync("cache/" + networkTest, testText);
-      testFiles.push(resolve("cache/" + networkTest));
+      fs.writeFileSync("test/." + networkTest, testText);
+      testFiles.push(resolve("test/." + networkTest));
     }
   }
 
@@ -75,7 +89,7 @@ task(TASK_TEST_GET_TEST_FILES).setAction(async (_, { config }, runSuper) => {
 const networks: {
   [network: string]: { chainId: number; networkRpc: string };
 } = {
-  mainnet: { chainId: 1, networkRpc: "https://rinkeby.infura.io/v3/" },
+  mainnet: { chainId: 1, networkRpc: "https://mainnet.infura.io/v3/" },
   ropsten: { chainId: 3, networkRpc: "https://ropsten.infura.io/v3/" },
   rinkeby: { chainId: 4, networkRpc: "https://rinkeby.infura.io/v3/" },
   kovan: { chainId: 42, networkRpc: "https://kovan.infura.io/v3/" },
